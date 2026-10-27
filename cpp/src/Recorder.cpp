@@ -169,6 +169,7 @@ void Recorder::onFrame(const GpuFrame& frame, cudaStream_t stream)
         if (firstTimestampNs_ == 0)
             firstTimestampNs_ = frame.deviceTimestampNs;
         pts = av_rescale(int64_t(frame.deviceTimestampNs - firstTimestampNs_), kTimeBase.den, 1'000'000'000);
+        lastTimestampNs_.store(frame.deviceTimestampNs);
     } else {
         pts = av_rescale(int64_t(submitted_), kTimeBase.den * 1000, std::lround(settings_.fps * 1000));
     }
@@ -249,6 +250,15 @@ void Recorder::stop()
     if (muxer_)
         avio_closep(&muxer_->pb);
     csv_.close();
+}
+
+double Recorder::measuredFps() const
+{
+    const uint64_t last = lastTimestampNs_.load();
+    const uint64_t frames = framesWritten_.load();
+    if (frames < 2 || last <= firstTimestampNs_)
+        return 0.0;
+    return (frames - 1) / ((last - firstTimestampNs_) / 1e9);
 }
 
 void Recorder::fail(const std::string& message)

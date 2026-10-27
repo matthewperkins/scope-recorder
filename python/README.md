@@ -28,4 +28,6 @@ uv run scope_recorder.py
 
 Camera settings are saved to `camera_state.json` next to the script.
 
+Each recording produces `<name>.mp4`, `<name>.frames.csv` and a `<name>.json` metadata sidecar, in the same format as the C++ version's (see [`cpp/README.md`](../cpp/README.md#output)). The `encoding` section reflects this version's pipeline (ffmpeg, timestamps at the nominal frame rate).
+
 Note: IC4's own PySide6 dialogs are empty stubs in the Linux wheel, so this app ships its own settings dialog (`camera_settings.py`).

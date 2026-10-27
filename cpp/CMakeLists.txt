@@ -31,7 +31,16 @@ add_executable(scope_recorder
     src/LiveView.cpp
     src/Recorder.cpp
     src/CameraSettingsDialog.cpp
+    src/RecordingSidecar.cpp
 )
+
+# Stamp `git describe` into the binary on every build (recorded in each recording's .json sidecar).
+add_custom_target(version_header
+    COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${CMAKE_BINARY_DIR}/generated/version.h
+            -P ${CMAKE_SOURCE_DIR}/cmake/version.cmake
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/version.h)
+add_dependencies(scope_recorder version_header)
+target_include_directories(scope_recorder PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 target_link_libraries(scope_recorder PRIVATE
     Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets

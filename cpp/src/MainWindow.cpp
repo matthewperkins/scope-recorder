@@ -8,6 +8,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QJsonArray>
 #include <QKeySequence>
 #include <QMessageBox>
 #include <QStatusBar>
@@ -22,6 +23,7 @@
 #include "CameraSettingsDialog.h"
 #include "LiveView.h"
 #include "Recorder.h"
+#include "RecordingSidecar.h"
 
 #include <unistd.h>
 
@@ -240,6 +242,33 @@ void MainWindow::startRecording()
     }
     camera_->setConsumer(recorder_);
     camera_->saveState();
+
+    sidecarPath_ = QString::fromStdString(s.path).chopped(4) + ".json";
+    sidecar_ = QJsonObject{
+        {"app", QJsonObject{{"name", "Scope Recorder (C++/CUDA)"}, {"version", sidecar::appVersion()}}},
+        {"recording", QJsonObject{
+             {"video_file", QFileInfo(QString::fromStdString(s.path)).fileName()},
+             {"frames_csv", QFileInfo(QString::fromStdString(s.path)).completeBaseName() + ".frames.csv"},
+             {"started", QDateTime::currentDateTime().toString(Qt::ISODateWithMs)},
+             {"status", "recording"},
+             {"nominal_fps", s.fps},
+             {"width", s.width},
+             {"height", s.height}}},
+        {"encoding", QJsonObject{
+             {"codec", "H.264 (h264_nvenc), High profile"},
+             {"rate_control", "constant quality (VBR, cq)"},
+             {"quality_preset", quality_->currentText()},
+             {"cq", s.quality},
+             {"keyframe_interval_s", 2},
+             {"pixel_format", "yuv420p (NV12 from GPU)"},
+             {"color", "BT.709 primaries/transfer/matrix, limited (TV) range"},
+             {"container", "fragmented MP4"},
+             {"timestamps", "camera hardware clock (device_timestamp_ns)"},
+             {"debayer", "Malvar-He-Cutler 5x5, GPU; camera applies white balance and gamma"}}},
+        {"camera_at_start", sidecar::cameraSnapshot(*camera_)},
+        {"camera_at_end", QJsonValue::Null}};
+    writeSidecar();
+
     recordAction_->setText(tr("■ Stop"));
     toolbar_->widgetForAction(recordAction_)->setStyleSheet("background:#c00; color:white; font-weight:bold;");
     updateActions();
@@ -261,6 +290,17 @@ void MainWindow::stopRecording()
     updateActions();
     lastRecording_ = QString::fromStdString(rec->path());
     const QString error = QString::fromStdString(rec->error());
+
+    QJsonObject recording = sidecar_.value("recording").toObject();
+    recording["stopped"] = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+    recording["status"] = error.isEmpty() ? QStringLiteral("complete") : QStringLiteral("failed: ") + error;
+    recording["frames_written"] = qint64(rec->framesWritten());
+    recording["frames_dropped"] = qint64(rec->framesDropped());
+    recording["measured_fps"] = rec->measuredFps();
+    recording["duration_s"] = rec->measuredFps() > 0 ? (rec->framesWritten() - 1) / rec->measuredFps() : 0.0;
+    sidecar_["recording"] = recording;
+    sidecar_["camera_at_end"] = sidecar::cameraSnapshot(*camera_);  // null if the camera was unplugged
+    writeSidecar();
     if (!error.isEmpty()) {
         recordLabel_->setText(tr("<b style='color:#d00'>Recording failed:</b> %1").arg(error));
         QMessageBox::critical(this, tr("Recording error"), error);
@@ -271,6 +311,14 @@ void MainWindow::stopRecording()
                               .arg(rec->framesWritten())
                               .arg(rec->framesDropped())
                               .arg(sizeAndBitrate(rec->framesWritten() / rec->fps())));
+}
+
+void MainWindow::writeSidecar()
+{
+    // A metadata problem must never stop a recording; just make it visible.
+    const QString error = sidecar::write(sidecarPath_, sidecar_);
+    if (!error.isEmpty())
+        statusBar()->showMessage(tr("Could not write %1: %2").arg(QFileInfo(sidecarPath_).fileName(), error), 10000);
 }
 
 QString MainWindow::sizeAndBitrate(double seconds) const

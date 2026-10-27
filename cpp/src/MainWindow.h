@@ -6,6 +6,7 @@
 
 #include <QAction>
 #include <QComboBox>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMainWindow>
 #include <QSettings>
@@ -50,6 +51,7 @@ private:
     void chooseOutputDir();
     void openOutputDir();
     QString sizeAndBitrate(double seconds) const;
+    void writeSidecar();
 
     Camera* camera_;
     LiveView* view_;
@@ -58,6 +60,9 @@ private:
     QString outputDir_;
     std::shared_ptr<Recorder> recorder_;
     QString lastRecording_;
+    // Per-recording metadata (<recording>.json): written at start, completed at stop.
+    QString sidecarPath_;
+    QJsonObject sidecar_;
 
     QToolBar* toolbar_ = nullptr;
     QAction* selectAction_ = nullptr;

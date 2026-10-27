@@ -48,6 +48,9 @@ public:
     double fps() const { return settings_.fps; }
     uint64_t framesWritten() const { return framesWritten_.load(); }
     uint64_t framesDropped() const { return framesDropped_.load(); }
+    // Frame rate measured from the camera clock over the frames submitted so far (0 if < 2 frames).
+    // Call from the GUI thread after stop(), or accept a slightly stale value while recording.
+    double measuredFps() const;
     std::chrono::steady_clock::time_point started() const { return started_; }
     std::string error() const;
 
@@ -78,6 +81,7 @@ private:
 
     // Timestamps (camera thread only).
     uint64_t firstTimestampNs_ = 0;
+    std::atomic<uint64_t> lastTimestampNs_{0};
     int64_t lastPts_ = -1;
     uint64_t submitted_ = 0;
 

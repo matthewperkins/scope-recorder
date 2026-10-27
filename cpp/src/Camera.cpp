@@ -100,6 +100,15 @@ void Camera::saveState()
         qWarning("Could not save camera state: %s", err.message().c_str());
 }
 
+QByteArray Camera::stateJson()
+{
+    ic4::Error err;
+    if (!grabber_.isDeviceOpen())
+        return {};
+    const auto state = grabber_.deviceSaveState(err);
+    return err.isSuccess() ? QByteArray(reinterpret_cast<const char*>(state.data()), qsizetype(state.size())) : QByteArray();
+}
+
 QString Camera::description() const
 {
     if (!grabber_.isDeviceOpen())

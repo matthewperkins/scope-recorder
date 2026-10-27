@@ -19,6 +19,7 @@ from pathlib import Path
 
 import imagingcontrol4 as ic4
 from imagingcontrol4.pyside6.display import DisplayWidget
+import recording_sidecar
 from camera_settings import CameraSettingsDialog, choose_device
 from PySide6.QtCore import QObject, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
@@ -78,6 +79,8 @@ class Recorder:
         self.fps = fps
         self.frames_written = 0
         self.frames_dropped = 0
+        self.first_timestamp_ns = 0
+        self.last_timestamp_ns = 0
         self.started = time.monotonic()
         self._queue: queue.Queue = queue.Queue(maxsize=MAX_QUEUED_FRAMES)
         self._log_path = path.with_suffix(".ffmpeg.log")
@@ -115,7 +118,15 @@ class Recorder:
                 self.error = f"ffmpeg stopped unexpectedly ({e}); see {self._log_path.name}"
                 break
             self._csv.writerow([self.frames_written, frame_number, timestamp_ns])
+            if self.frames_written == 0:
+                self.first_timestamp_ns = timestamp_ns
+            self.last_timestamp_ns = timestamp_ns
             self.frames_written += 1
+
+    def measured_fps(self) -> float:
+        """Frame rate from the camera clock (0 if fewer than 2 frames)."""
+        span_s = (self.last_timestamp_ns - self.first_timestamp_ns) / 1e9
+        return (self.frames_written - 1) / span_s if self.frames_written > 1 and span_s > 0 else 0.0
 
     def stop(self) -> None:
         self._queue.put(None)
@@ -409,6 +420,37 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Recording error", f"Could not start ffmpeg: {e}")
             return
         self.save_camera_state()
+
+        self.sidecar_path = path.with_suffix(".json")
+        nvenc = self.encoder == "h264_nvenc"
+        self.sidecar = {
+            "app": {"name": "Scope Recorder (Python)", "version": recording_sidecar.app_version()},
+            "recording": {
+                "video_file": path.name,
+                "frames_csv": path.with_suffix(".frames.csv").name,
+                "started": recording_sidecar.now_iso(),
+                "status": "recording",
+                "nominal_fps": fps,
+                "width": w,
+                "height": h,
+            },
+            "encoding": {
+                "codec": f"H.264 ({self.encoder} via ffmpeg)",
+                "rate_control": "constant quality (cq)" if nvenc else "constant quality (crf)",
+                "quality_preset": self.quality_combo.currentText(),
+                "cq" if nvenc else "crf": quality if nvenc else quality - 1,
+                "keyframe_interval_s": 2,
+                "pixel_format": "yuv420p (NVENC converts BGRx on the GPU)" if nvenc else "yuv420p",
+                "color": "not tagged in the file",
+                "container": "fragmented MP4",
+                "timestamps": "constant, at the nominal frame rate",
+                "debayer": "IC4 (CPU); camera applies white balance and gamma",
+            },
+            "camera_at_start": recording_sidecar.camera_snapshot(self.grabber),
+            "camera_at_end": None,
+        }
+        self._write_sidecar()
+
         self.act_record.setText("■ Stop")
         self.record_button.setStyleSheet("background:#c00; color:white; font-weight:bold;")
         self._update_actions()
@@ -422,6 +464,15 @@ class MainWindow(QMainWindow):
         if rec is None:
             return
         rec.stop()
+        rec_info = self.sidecar["recording"]
+        rec_info["stopped"] = recording_sidecar.now_iso()
+        rec_info["status"] = f"failed: {rec.error}" if rec.error else "complete"
+        rec_info["frames_written"] = rec.frames_written
+        rec_info["frames_dropped"] = rec.frames_dropped
+        rec_info["measured_fps"] = rec.measured_fps()
+        rec_info["duration_s"] = (rec.frames_written - 1) / rec.measured_fps() if rec.measured_fps() else 0.0
+        self.sidecar["camera_at_end"] = recording_sidecar.camera_snapshot(self.grabber)  # None if unplugged
+        self._write_sidecar()
         if rec.error:
             self.lbl_rec.setText(f"<b style='color:#d00'>Recording failed:</b> {rec.error}")
             QMessageBox.critical(self, "Recording error", rec.error)
@@ -430,6 +481,11 @@ class MainWindow(QMainWindow):
                 f"Saved {rec.path.name}  ({rec.frames_written} frames, {rec.frames_dropped} dropped)  "
                 f"{self._size_and_bitrate(rec.path, rec.frames_written / rec.fps)}"
             )
+
+    def _write_sidecar(self) -> None:
+        # A metadata problem must never stop a recording; just make it visible.
+        if error := recording_sidecar.write(self.sidecar_path, self.sidecar):
+            self.statusBar().showMessage(f"Could not write {self.sidecar_path.name}: {error}", 10000)
 
     def snapshot(self) -> None:
         if not self.grabber.is_streaming:

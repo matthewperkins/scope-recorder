@@ -48,6 +48,7 @@ Camera settings are saved to `~/.config/scope_recorder/camera_state.json`. The q
 
 - `YYYY-MM-DD_HH-MM-SS.mp4`: H.264 High, 4:2:0, tagged BT.709, fragmented MP4. Frame timing follows the camera's hardware clock, so playback speed is exact even if frames drop.
 - `YYYY-MM-DD_HH-MM-SS.frames.csv`: `video_frame, device_frame_number, device_timestamp_ns`. Gaps in `device_frame_number` mean dropped frames. Flushed every second.
+- `YYYY-MM-DD_HH-MM-SS.json`: metadata sidecar. It holds `app` (name and git version it was built from); `recording` (start and stop times, status, frames written and dropped, nominal and measured fps, duration); `encoding` (codec, quality preset and cq, colour, container, timestamp source, debayer method); and `camera_at_start` / `camera_at_end` (device model and serial, a `summary` of the key settings, and `ic4_state`, IC4's complete settings dump, which can be loaded back into the camera). It is written atomically at start and completed at stop. After a crash it still parses, with `"status": "recording"` and `camera_at_end` null.
 - Snapshots: `YYYY-MM-DD_HH-MM-SS_mmm.png`.
 
 The bitrate follows the scene. A dim scene drives auto gain up, which adds noise and can double the file size, so more light or a lower "Auto max gain" helps.

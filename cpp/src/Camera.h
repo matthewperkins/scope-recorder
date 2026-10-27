@@ -61,6 +61,8 @@ public:
     uint64_t framesReceived() const { return framesReceived_.load(); }
     ic4::PropertyMap properties() const { return grabber_.devicePropertyMap(); }
     void saveState();
+    // IC4's complete device state (model, serial, every property) as JSON text; empty if no camera.
+    QByteArray stateJson();
 
 signals:
     void frameReady();
