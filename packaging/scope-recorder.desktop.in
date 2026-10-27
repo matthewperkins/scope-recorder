@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Scope Recorder
+GenericName=Microscope Camera Recorder
+Comment=Live view and GPU recording for The Imaging Source USB3 cameras on a microscope
+Exec=@BIN@
+Path=@ROOT@
+Icon=scope-recorder
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=camera;microscope;scope;surgery;record;TIS;
+StartupWMClass=scope-recorder

@@ -1,0 +1,15 @@
+# Build output
+cpp/build/
+build/
+
+# The Imaging Source SDK (proprietary; fetched locally with scripts/fetch_ic4_sdk.sh)
+cpp/third_party/ic4/
+
+# NVIDIA Video Codec SDK downloads (licensed by NVIDIA)
+Video_Codec_SDK_*.zip
+
+# Python
+python/.venv/
+__pycache__/
+# Runtime camera settings, rewritten every time the Python app closes
+python/camera_state.json
