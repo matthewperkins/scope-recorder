@@ -23,7 +23,7 @@ uv run scope_recorder.py
 | Camera settings… | Ctrl+P | Exposure, gain, white balance, frame rate, gamma, flip |
 | ● Record / ■ Stop | Ctrl+R | |
 | Snapshot | Ctrl+S | Full-resolution PNG |
-| Quality | Ctrl+E | Very high / High (default) / Standard / Compact |
+| Quality | Ctrl+E | Very high / High (default) / Standard / Compact / Very compact (capped at 3 Mbit/s) |
 | Output folder… / Open folder | | |
 
 Camera settings are saved to `camera_state.json` next to the script.

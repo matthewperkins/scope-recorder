@@ -44,7 +44,11 @@ MAX_QUEUED_FRAMES = 60
 
 
 # Name -> NVENC constant-quality level. Lower = better quality and bigger files.
-QUALITY_PRESETS = {"Very high": 16, "High": 19, "Standard": 23, "Compact": 27}
+# Name -> (NVENC constant-quality level, bitrate cap in kbit/s or 0). Lower level = better, bigger files.
+# A cap makes the encoder trade detail for size in hard (noisy, moving) scenes.
+QUALITY_PRESETS = {
+    "Very high": (16, 0), "High": (19, 0), "Standard": (23, 0), "Compact": (27, 0), "Very compact": (30, 3000),
+}
 DEFAULT_QUALITY = "High"
 
 
@@ -63,13 +67,14 @@ def pick_encoder() -> str:
     return "libx264"
 
 
-def encoder_args(encoder: str, quality: int) -> list[str]:
-    """Constant-quality encoding: bitrate follows scene complexity rather than a fixed target."""
+def encoder_args(encoder: str, quality: int, max_kbps: int = 0) -> list[str]:
+    """Constant-quality encoding: bitrate follows scene complexity, optionally up to a cap (2 s buffer)."""
+    cap = ["-maxrate", f"{max_kbps}k", "-bufsize", f"{2 * max_kbps}k"] if max_kbps else []
     if encoder == "h264_nvenc":
         # NVENC accepts BGRx directly and converts to 4:2:0 YUV on the GPU, which halves ffmpeg's CPU use.
-        return ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", str(quality), "-b:v", "0"]
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", str(quality), "-b:v", "0", *cap]
     # x264's CRF runs about one step lower than NVENC's CQ for similar quality.
-    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(quality - 1), "-pix_fmt", "yuv420p"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(quality - 1), *cap, "-pix_fmt", "yuv420p"]
 
 
 class Recorder:
@@ -424,8 +429,8 @@ class MainWindow(QMainWindow):
         w, h, fps = self._frame_geometry()
         path = self.output_dir / f"{dt.datetime.now():%Y-%m-%d_%H-%M-%S}.mp4"
         try:
-            quality = QUALITY_PRESETS[self.quality_combo.currentText()]
-            self.listener.recorder = Recorder(path, w, h, fps, encoder_args(self.encoder, quality))
+            quality, max_kbps = QUALITY_PRESETS[self.quality_combo.currentText()]
+            self.listener.recorder = Recorder(path, w, h, fps, encoder_args(self.encoder, quality, max_kbps))
         except OSError as e:
             self.act_record.setChecked(False)
             QMessageBox.critical(self, "Recording error", f"Could not start ffmpeg: {e}")
@@ -447,9 +452,11 @@ class MainWindow(QMainWindow):
             },
             "encoding": {
                 "codec": f"H.264 ({self.encoder} via ffmpeg)",
-                "rate_control": "constant quality (cq)" if nvenc else "constant quality (crf)",
+                "rate_control": ("constant quality (cq)" if nvenc else "constant quality (crf)")
+                + (", capped at max_bitrate_kbps" if max_kbps else ""),
                 "quality_preset": self.quality_combo.currentText(),
                 "cq" if nvenc else "crf": quality if nvenc else quality - 1,
+                "max_bitrate_kbps": max_kbps or None,
                 "keyframe_interval_s": 2,
                 "pixel_format": "yuv420p (NVENC converts BGRx on the GPU)" if nvenc else "yuv420p",
                 "color": "not tagged in the file",

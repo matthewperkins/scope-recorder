@@ -97,6 +97,10 @@ void Recorder::open()
     encoder_->hw_frames_ctx = av_buffer_ref(framesCtx_);
     encoder_->gop_size = std::max(1, int(std::lround(settings_.fps * 2)));  // keyframe (and MP4 fragment) every ~2 s
     encoder_->bit_rate = 0;  // constant quality: bitrate follows the scene
+    if (settings_.maxBitrateKbps > 0) {  // ...up to a ceiling, averaged over a 2 s buffer
+        encoder_->rc_max_rate = int64_t(settings_.maxBitrateKbps) * 1000;
+        encoder_->rc_buffer_size = settings_.maxBitrateKbps * 2000;
+    }
     encoder_->color_primaries = AVCOL_PRI_BT709;
     encoder_->color_trc = AVCOL_TRC_BT709;
     encoder_->colorspace = AVCOL_SPC_BT709;

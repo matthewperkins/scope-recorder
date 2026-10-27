@@ -30,8 +30,15 @@
 namespace {
 
 // Name -> NVENC constant-quality level, matching the Python version.
-const QList<QPair<QString, int>> kQualityPresets = {
-    {"Very high", 16}, {"High", 19}, {"Standard", 23}, {"Compact", 27}};
+// Matching the Python version. cq = NVENC constant-quality level (lower = better, bigger files).
+// maxKbps > 0 caps the bitrate: the encoder then trades detail for size in hard (noisy, moving) scenes.
+struct QualityPreset {
+    QString name;
+    int cq;
+    int maxKbps;
+};
+const QList<QualityPreset> kQualityPresets = {
+    {"Very high", 16, 0}, {"High", 19, 0}, {"Standard", 23, 0}, {"Compact", 27, 0}, {"Very compact", 30, 3000}};
 const QString kDefaultQuality = "High";
 
 QString timestampedName(const QString& format)
@@ -80,8 +87,8 @@ void MainWindow::buildToolbar()
     toolbar_->addSeparator();
     toolbar_->addWidget(new QLabel(tr(" Quality: ")));
     quality_ = new QComboBox;
-    for (const auto& [name, level] : kQualityPresets)
-        quality_->addItem(name, level);
+    for (int i = 0; i < kQualityPresets.size(); ++i)
+        quality_->addItem(kQualityPresets[i].name, i);
     quality_->setCurrentText(settings_.value("quality", kDefaultQuality).toString());
     quality_->setToolTip(tr("Recording quality (Ctrl+E). Higher quality means bigger files."));
     connect(quality_, &QComboBox::currentTextChanged, this, [this](const QString& q) { settings_.setValue("quality", q); });
@@ -232,7 +239,9 @@ void MainWindow::startRecording()
     s.width = frame.width;
     s.height = frame.height;
     s.fps = camera_->frameRate();
-    s.quality = quality_->currentData().toInt();
+    const QualityPreset& preset = kQualityPresets[quality_->currentData().toInt()];
+    s.quality = preset.cq;
+    s.maxBitrateKbps = preset.maxKbps;
 
     std::string error;
     recorder_ = Recorder::start(s, error);
@@ -257,9 +266,11 @@ void MainWindow::startRecording()
              {"height", s.height}}},
         {"encoding", QJsonObject{
              {"codec", "H.264 (h264_nvenc), High profile"},
-             {"rate_control", "constant quality (VBR, cq)"},
+             {"rate_control", s.maxBitrateKbps > 0 ? "constant quality (VBR, cq), capped at max_bitrate_kbps"
+                                                   : "constant quality (VBR, cq)"},
              {"quality_preset", quality_->currentText()},
              {"cq", s.quality},
+             {"max_bitrate_kbps", s.maxBitrateKbps > 0 ? QJsonValue(s.maxBitrateKbps) : QJsonValue::Null},
              {"keyframe_interval_s", 2},
              {"pixel_format", "yuv420p (NV12 from GPU)"},
              {"color", "BT.709 primaries/transfer/matrix, limited (TV) range"},

@@ -33,6 +33,7 @@ public:
         int height = 0;
         double fps = 30.0;  // nominal rate (container hint); timestamps come from the camera clock
         int quality = 19;   // NVENC constant-quality level; lower = better, bigger files
+        int maxBitrateKbps = 0;  // > 0: cap the bitrate (2 s buffer); 0: no cap
     };
 
     // Returns nullptr and sets `error` on failure.

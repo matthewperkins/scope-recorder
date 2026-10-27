@@ -39,7 +39,7 @@ To add it to your application launcher, with its icon: `scripts/install_desktop_
 | Camera settings… | Ctrl+P | Exposure, gain, white balance, frame rate, gamma, flip |
 | ● Record / ■ Stop | Ctrl+R | |
 | Snapshot | Ctrl+S | Full-resolution PNG |
-| Quality | Ctrl+E | Very high / High (default) / Standard / Compact |
+| Quality | Ctrl+E | Very high / High (default) / Standard / Compact / Very compact (capped at 3 Mbit/s) |
 | Output folder… / Open folder | | |
 
 Camera settings are saved to `~/.config/scope_recorder/camera_state.json`. The quality choice and output folder are shared with the Python version.
@@ -51,7 +51,7 @@ Camera settings are saved to `~/.config/scope_recorder/camera_state.json`. The q
 - `YYYY-MM-DD_HH-MM-SS.json`: metadata sidecar. It holds `app` (name and git version it was built from); `recording` (start and stop times, status, frames written and dropped, nominal and measured fps, duration); `encoding` (codec, quality preset and cq, colour, container, timestamp source, debayer method); `camera_at_start` / `camera_at_end` (device model and serial, a `summary` of the key settings, and `ic4_state`, IC4's complete settings dump, which can be loaded back into the camera); and `setting_changes`, every setting changed in the settings dialog during the recording. Each entry has `time`, `recording_elapsed_s`, `issued_at_video_frame`, `after_device_timestamp_ns` (to align with the frames CSV), `setting` (e.g. `ExposureTime` in µs, `GainAuto`, `BalanceRatio[Red]`) and `value`. The camera applies a change a little after it is issued: +2 frames, measured on a DFK 33UX174. Values driven by auto modes (exposure, gain) drift without being logged; the start and end snapshots bracket them. The file is written atomically at start, after every logged change, and at stop. After a crash it still parses, with `"status": "recording"` and `camera_at_end` null.
 - Snapshots: `YYYY-MM-DD_HH-MM-SS_mmm.png`.
 
-The bitrate follows the scene. A dim scene drives auto gain up, which adds noise and can double the file size, so more light or a lower "Auto max gain" helps.
+The bitrate follows the scene. Sensor noise is expensive to encode, so a dim scene that drives auto gain up can double the file size at the same preset: more light, or a lower "Auto max gain", gives smaller and cleaner files. "Very compact" also caps the bitrate at 3000 kbit/s (2 s buffer, so brief peaks reach ~3.3 Mbit/s). In a noisy still scene it averaged 1.9 Mbit/s against 20.6 for "High"; edges stayed sharp and mostly the noise grain was lost. Expect visible smearing during fast motion.
 
 ## Testing
 
