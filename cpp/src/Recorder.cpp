@@ -171,11 +171,11 @@ void Recorder::onFrame(const GpuFrame& frame, cudaStream_t stream)
         pts = av_rescale(int64_t(frame.deviceTimestampNs - firstTimestampNs_), kTimeBase.den, 1'000'000'000);
         lastTimestampNs_.store(frame.deviceTimestampNs);
     } else {
-        pts = av_rescale(int64_t(submitted_), kTimeBase.den * 1000, std::lround(settings_.fps * 1000));
+        pts = av_rescale(int64_t(submitted_.load()), kTimeBase.den * 1000, std::lround(settings_.fps * 1000));
     }
     nv12->pts = std::max(pts, lastPts_ + 1);
     lastPts_ = nv12->pts;
-    ++submitted_;
+    submitted_.fetch_add(1);
 
     {
         std::lock_guard lock(mutex_);

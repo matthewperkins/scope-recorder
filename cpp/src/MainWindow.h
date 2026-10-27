@@ -28,7 +28,8 @@ public:
     // Measures for `seconds` (after a 3 s warm-up), prints results to stdout, then closes the window.
     // `grabFile`: save the live view's last rendered image there. `record`: record during the
     // measurement and report the file. `snapshot`: take a snapshot at the end and report it.
-    void runBenchmark(double seconds, const QString& grabFile = {}, bool record = false, bool snapshot = false);
+    void runBenchmark(double seconds, const QString& grabFile = {}, bool record = false, bool snapshot = false,
+                      bool changeSettings = false);
 
     // `remember` stores it for future sessions (shared with the Python version).
     void setOutputDir(const QString& dir, bool remember);
@@ -52,6 +53,8 @@ private:
     void openOutputDir();
     QString sizeAndBitrate(double seconds) const;
     void writeSidecar();
+    void logSettingChange(const QString& setting, const QJsonValue& value);
+    void runSettingChangeScript();  // benchmark: change settings via the real dialog while recording
 
     Camera* camera_;
     LiveView* view_;

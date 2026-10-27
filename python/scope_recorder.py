@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import imagingcontrol4 as ic4
+import shiboken6
 from imagingcontrol4.pyside6.display import DisplayWidget
 import recording_sidecar
 from camera_settings import CameraSettingsDialog, choose_device
@@ -79,6 +80,8 @@ class Recorder:
         self.fps = fps
         self.frames_written = 0
         self.frames_dropped = 0
+        self.frames_submitted = 0     # = index of the next video frame (camera thread)
+        self.last_submitted_ts_ns = 0
         self.first_timestamp_ns = 0
         self.last_timestamp_ns = 0
         self.started = time.monotonic()
@@ -108,6 +111,9 @@ class Recorder:
             self._queue.put_nowait((frame, frame_number, timestamp_ns))
         except queue.Full:
             self.frames_dropped += 1
+            return
+        self.frames_submitted += 1
+        self.last_submitted_ts_ns = timestamp_ns
 
     def _run(self) -> None:
         while (item := self._queue.get()) is not None:
@@ -373,7 +379,12 @@ class MainWindow(QMainWindow):
     def show_properties(self) -> None:
         if not self.grabber.is_device_open:
             return
-        CameraSettingsDialog(self.grabber, recording=self.listener.recorder is not None, parent=self).exec()
+        dialog = CameraSettingsDialog(self.grabber, recording=self.listener.recorder is not None, parent=self)
+        dialog.setting_changed.connect(self._log_setting_change)
+        dialog.exec()
+        # Destroy it now: as a hidden child of the window it would otherwise keep its IC4 property map
+        # alive until after IC4 shuts down ("Library.init was not called" at exit).
+        shiboken6.delete(dialog)
         self.save_camera_state()
         w, h, _ = self._frame_geometry()
         info = self.grabber.device_info
@@ -447,6 +458,7 @@ class MainWindow(QMainWindow):
                 "debayer": "IC4 (CPU); camera applies white balance and gamma",
             },
             "camera_at_start": recording_sidecar.camera_snapshot(self.grabber),
+            "setting_changes": [],
             "camera_at_end": None,
         }
         self._write_sidecar()
@@ -481,6 +493,22 @@ class MainWindow(QMainWindow):
                 f"Saved {rec.path.name}  ({rec.frames_written} frames, {rec.frames_dropped} dropped)  "
                 f"{self._size_and_bitrate(rec.path, rec.frames_written / rec.fps)}"
             )
+
+    def _log_setting_change(self, setting: str, value) -> None:
+        rec = self.listener.recorder
+        if rec is None:
+            return  # only changes made during a recording are logged
+        self.sidecar["setting_changes"].append({
+            "time": recording_sidecar.now_iso(),
+            "recording_elapsed_s": time.monotonic() - rec.started,
+            # Index of the next video frame when the change was sent; the camera applies it a
+            # little later (measured +2 frames on a DFK 33UX174).
+            "issued_at_video_frame": rec.frames_submitted,
+            "after_device_timestamp_ns": rec.last_submitted_ts_ns,
+            "setting": setting,
+            "value": value,
+        })
+        self._write_sidecar()  # immediately, so the log survives a crash
 
     def _write_sidecar(self) -> None:
         # A metadata problem must never stop a recording; just make it visible.

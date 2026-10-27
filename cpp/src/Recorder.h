@@ -51,6 +51,10 @@ public:
     // Frame rate measured from the camera clock over the frames submitted so far (0 if < 2 frames).
     // Call from the GUI thread after stop(), or accept a slightly stale value while recording.
     double measuredFps() const;
+    // Frames handed to the encoder so far = index of the next video frame. Thread-safe.
+    uint64_t framesSubmitted() const { return submitted_.load(); }
+    // Camera timestamp of the most recent frame (0 if none yet). Thread-safe.
+    uint64_t lastTimestampNs() const { return lastTimestampNs_.load(); }
     std::chrono::steady_clock::time_point started() const { return started_; }
     std::string error() const;
 
@@ -83,7 +87,7 @@ private:
     uint64_t firstTimestampNs_ = 0;
     std::atomic<uint64_t> lastTimestampNs_{0};
     int64_t lastPts_ = -1;
-    uint64_t submitted_ = 0;
+    std::atomic<uint64_t> submitted_{0};
 
     std::mutex mutex_;
     std::condition_variable wake_;

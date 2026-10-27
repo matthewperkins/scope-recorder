@@ -5,6 +5,8 @@
 #include <vector>
 
 #include <QDialog>
+#include <QJsonValue>
+#include <QVariant>
 #include <QTimer>
 
 #include <ic4/ic4.h>
@@ -21,6 +23,15 @@ class CameraSettingsDialog : public QDialog {
 public:
     CameraSettingsDialog(ic4::PropertyMap properties, bool recording, QWidget* parent = nullptr);
 
+    // Sets the field for camera property `setting` (as named in settingChanged, e.g. "ExposureTime"
+    // in the field's display unit, or "BalanceRatio[Red]") exactly as a user's key press would.
+    // Used by automated tests. Returns false if there is no such field.
+    bool setField(const QString& setting, const QVariant& value);
+
+signals:
+    // A setting was changed by the user and accepted by the camera.
+    void settingChanged(const QString& setting, const QJsonValue& value);
+
 private:
     QFormLayout* addGroup(QVBoxLayout* layout, const QString& title);
     void addFloat(QFormLayout* form, const QString& label, const char* name, double scale = 1.0,
@@ -32,13 +43,14 @@ private:
     void addBalanceRatio(QFormLayout* form, const char* channel);
 
     template <typename T>
-    void write(const char* name, const T& value);
+    void write(const char* name, const T& value, const QString& setting = {});
     void refresh();
 
     struct Binding {
         QWidget* widget;
         std::function<void()> load;  // reads the camera value into the widget (signals blocked)
         std::string lockProperty;    // empty = enabled state managed elsewhere
+        QString setting = {};        // name used in settingChanged / setField
     };
 
     ic4::PropertyMap props_;

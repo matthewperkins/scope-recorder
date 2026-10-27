@@ -47,6 +47,9 @@ int main(int argc, char* argv[])
     parser.addOption(record);
     QCommandLineOption snapshot("snapshot", "With --benchmark: take a snapshot at the end.");
     parser.addOption(snapshot);
+    QCommandLineOption changeSettings("change-settings",
+                                      "With --benchmark --record: change exposure via the settings dialog mid-recording.");
+    parser.addOption(changeSettings);
     QCommandLineOption outputDir("output-dir", "Save recordings to <dir> for this session only.", "dir");
     parser.addOption(outputDir);
     parser.process(app);
@@ -63,7 +66,7 @@ int main(int argc, char* argv[])
         window.startCamera();
         if (parser.isSet(benchmark))
             window.runBenchmark(parser.value(benchmark).toDouble(), parser.value(grab), parser.isSet(record),
-                                parser.isSet(snapshot));
+                                parser.isSet(snapshot), parser.isSet(changeSettings));
         result = app.exec();
         camera.close();
     }

@@ -89,15 +89,46 @@ QFormLayout* CameraSettingsDialog::addGroup(QVBoxLayout* layout, const QString& 
     return form;
 }
 
+namespace {
+
+QJsonValue toJson(double v) { return v; }
+QJsonValue toJson(bool v) { return v; }
+QJsonValue toJson(int64_t v) { return qint64(v); }
+QJsonValue toJson(const char* v) { return QString::fromUtf8(v); }
+
+}  // namespace
+
 template <typename T>
-void CameraSettingsDialog::write(const char* name, const T& value)
+void CameraSettingsDialog::write(const char* name, const T& value, const QString& setting)
 {
     ic4::Error err;
-    if (props_.setValue(name, value, err))
+    if (props_.setValue(name, value, err)) {
         status_->clear();
-    else
+        emit settingChanged(setting.isEmpty() ? QString(name) : setting, toJson(value));
+    } else {
         status_->setText(QStringLiteral("%1: %2").arg(name, QString::fromStdString(err.message())));
+    }
     refresh();
+}
+
+bool CameraSettingsDialog::setField(const QString& setting, const QVariant& value)
+{
+    for (const auto& b : bindings_) {
+        if (b.setting != setting)
+            continue;
+        if (auto* box = qobject_cast<QCheckBox*>(b.widget))
+            box->setChecked(value.toBool());
+        else if (auto* dspin = qobject_cast<QDoubleSpinBox*>(b.widget))
+            dspin->setValue(value.toDouble());
+        else if (auto* spin = qobject_cast<QSpinBox*>(b.widget))
+            spin->setValue(value.toInt());
+        else if (auto* combo = qobject_cast<QComboBox*>(b.widget)) {
+            combo->setCurrentText(value.toString());
+            emit combo->textActivated(value.toString());
+        }
+        return true;
+    }
+    return false;
 }
 
 void CameraSettingsDialog::addFloat(QFormLayout* form, const QString& label, const char* name, double scale,
@@ -130,6 +161,7 @@ void CameraSettingsDialog::addFloat(QFormLayout* form, const QString& label, con
                                  spin->setValue(v * scale);
                          },
                          disabledReason.isEmpty() ? name : ""});
+    bindings_.back().setting = name;
 }
 
 void CameraSettingsDialog::addInt(QFormLayout* form, const QString& label, const char* name)
@@ -151,6 +183,7 @@ void CameraSettingsDialog::addInt(QFormLayout* form, const QString& label, const
                                  spin->setValue(int(v));
                          },
                          name});
+    bindings_.back().setting = name;
 }
 
 void CameraSettingsDialog::addBool(QFormLayout* form, const QString& label, const char* name)
@@ -170,6 +203,7 @@ void CameraSettingsDialog::addBool(QFormLayout* form, const QString& label, cons
                                  box->setChecked(v);
                          },
                          name});
+    bindings_.back().setting = name;
 }
 
 void CameraSettingsDialog::addAutoCheckbox(QFormLayout* form, const QString& label, const char* name)
@@ -190,6 +224,7 @@ void CameraSettingsDialog::addAutoCheckbox(QFormLayout* form, const QString& lab
                                  box->setChecked(v != "Off");
                          },
                          name});
+    bindings_.back().setting = name;
 }
 
 void CameraSettingsDialog::addEnum(QFormLayout* form, const QString& label, const char* name)
@@ -213,6 +248,7 @@ void CameraSettingsDialog::addEnum(QFormLayout* form, const QString& label, cons
                                  combo->setCurrentText(QString::fromStdString(v));
                          },
                          name});
+    bindings_.back().setting = name;
 }
 
 void CameraSettingsDialog::addBalanceRatio(QFormLayout* form, const char* channel)
@@ -231,7 +267,7 @@ void CameraSettingsDialog::addBalanceRatio(QFormLayout* form, const char* channe
     connect(spin, &QDoubleSpinBox::valueChanged, this, [this, channel](double v) {
         ic4::Error ignored;
         props_.setValue("BalanceRatioSelector", channel, ignored);
-        write("BalanceRatio", v);
+        write("BalanceRatio", v, QStringLiteral("BalanceRatio[%1]").arg(channel));
     });
     form->addRow(tr("%1 ratio").arg(channel), spin);
     bindings_.push_back({spin,
@@ -243,6 +279,7 @@ void CameraSettingsDialog::addBalanceRatio(QFormLayout* form, const char* channe
                                  spin->setValue(v);
                          },
                          "BalanceRatio"});
+    bindings_.back().setting = QStringLiteral("BalanceRatio[%1]").arg(channel);
 }
 
 void CameraSettingsDialog::refresh()

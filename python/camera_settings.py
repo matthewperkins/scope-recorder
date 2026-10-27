@@ -7,7 +7,7 @@ Arrow keys apply immediately; typed values apply on Enter. Esc closes.
 from __future__ import annotations
 
 import imagingcontrol4 as ic4
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,6 +27,9 @@ BALANCE_CHANNELS = ("Red", "Green", "Blue")
 
 
 class CameraSettingsDialog(QDialog):
+    # (setting, value): a setting changed by the user and accepted by the camera.
+    setting_changed = Signal(str, object)
+
     def __init__(self, grabber: ic4.Grabber, recording: bool, parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("Camera settings")
@@ -34,6 +37,7 @@ class CameraSettingsDialog(QDialog):
         self.recording = recording
         # (widget, getter, property name used for enabled/locked state)
         self._bindings: list[tuple[QWidget, callable, str]] = []
+        self._fields: dict[str, QWidget] = {}  # setting name -> widget, for set_field()
 
         layout = QVBoxLayout(self)
 
@@ -92,13 +96,32 @@ class CameraSettingsDialog(QDialog):
         except ic4.IC4Exception:
             return None
 
-    def _set(self, name: str, value) -> None:
+    def _set(self, name: str, value, setting: str | None = None) -> None:
         try:
             self.pm.set_value(name, value)
             self.status.clear()
+            self.setting_changed.emit(setting or name, value)
         except ic4.IC4Exception as e:
             self.status.setText(f"{name}: {e.message}")
         self.refresh()
+
+    def set_field(self, setting: str, value) -> bool:
+        """Sets a field exactly as a user's key press would (for automated tests).
+
+        `setting` is the camera property name (e.g. "ExposureTime", in the field's display unit)
+        or "BalanceRatio[Red]". Returns False if there is no such field.
+        """
+        widget = self._fields.get(setting)
+        if widget is None:
+            return False
+        if isinstance(widget, QCheckBox):
+            widget.setChecked(bool(value))
+        elif isinstance(widget, QComboBox):
+            widget.setCurrentText(str(value))
+            widget.textActivated.emit(str(value))
+        else:
+            widget.setValue(value)
+        return True
 
     def _float(self, form, label, name, scale=1.0, unit="", decimals=2, step=1.0, disabled_reason=None):
         prop = self._find(name)
@@ -118,6 +141,7 @@ class CameraSettingsDialog(QDialog):
             label = f"{label} ({disabled_reason})"
         form.addRow(label, spin)
         self._bindings.append((spin, lambda: self.pm.get_value_float(name) * scale, None if disabled_reason else name))
+        self._fields[name] = spin
 
     def _int(self, form, label, name):
         prop = self._find(name)
@@ -129,6 +153,7 @@ class CameraSettingsDialog(QDialog):
         spin.valueChanged.connect(lambda v: self._set(name, v))
         form.addRow(label, spin)
         self._bindings.append((spin, lambda: self.pm.get_value_int(name), name))
+        self._fields[name] = spin
 
     def _bool(self, form, label, name):
         if self._find(name) is None:
@@ -137,6 +162,7 @@ class CameraSettingsDialog(QDialog):
         box.toggled.connect(lambda on: self._set(name, on))
         form.addRow(label, box)
         self._bindings.append((box, lambda: self.pm.get_value_bool(name), name))
+        self._fields[name] = box
 
     def _auto_checkbox(self, form, label, name):
         """An Off/Continuous enumeration shown as a checkbox."""
@@ -146,6 +172,7 @@ class CameraSettingsDialog(QDialog):
         box.toggled.connect(lambda on: self._set(name, "Continuous" if on else "Off"))
         form.addRow(label, box)
         self._bindings.append((box, lambda: self.pm.get_value_str(name) != "Off", name))
+        self._fields[name] = box
 
     def _enum(self, form, label, name):
         prop = self._find(name)
@@ -156,6 +183,7 @@ class CameraSettingsDialog(QDialog):
         combo.textActivated.connect(lambda text: self._set(name, text))
         form.addRow(label, combo)
         self._bindings.append((combo, lambda: self.pm.get_value_str(name), name))
+        self._fields[name] = combo
 
     def _balance_ratio(self, form, channel):
         if self._find("BalanceRatioSelector") is None:
@@ -172,7 +200,7 @@ class CameraSettingsDialog(QDialog):
                 self.pm.set_value("BalanceRatioSelector", channel)
             except ic4.IC4Exception:
                 pass
-            self._set("BalanceRatio", v)
+            self._set("BalanceRatio", v, f"BalanceRatio[{channel}]")
 
         def read(channel=channel):
             self.pm.set_value("BalanceRatioSelector", channel)
@@ -181,6 +209,7 @@ class CameraSettingsDialog(QDialog):
         spin.valueChanged.connect(write)
         form.addRow(f"{channel} ratio", spin)
         self._bindings.append((spin, read, "BalanceRatio"))
+        self._fields[f"BalanceRatio[{channel}]"] = spin
 
     # ---------- live refresh ----------
 

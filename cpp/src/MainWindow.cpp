@@ -201,6 +201,7 @@ void MainWindow::showCameraSettings()
     if (!camera_->isStreaming())
         return;
     CameraSettingsDialog dialog(camera_->properties(), recorder_ != nullptr, this);
+    connect(&dialog, &CameraSettingsDialog::settingChanged, this, &MainWindow::logSettingChange);
     dialog.exec();
     camera_->saveState();
 }
@@ -266,6 +267,7 @@ void MainWindow::startRecording()
              {"timestamps", "camera hardware clock (device_timestamp_ns)"},
              {"debayer", "Malvar-He-Cutler 5x5, GPU; camera applies white balance and gamma"}}},
         {"camera_at_start", sidecar::cameraSnapshot(*camera_)},
+        {"setting_changes", QJsonArray()},
         {"camera_at_end", QJsonValue::Null}};
     writeSidecar();
 
@@ -311,6 +313,49 @@ void MainWindow::stopRecording()
                               .arg(rec->framesWritten())
                               .arg(rec->framesDropped())
                               .arg(sizeAndBitrate(rec->framesWritten() / rec->fps())));
+}
+
+void MainWindow::logSettingChange(const QString& setting, const QJsonValue& value)
+{
+    if (!recorder_)
+        return;  // only changes made during a recording are logged
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - recorder_->started()).count();
+    QJsonArray changes = sidecar_.value("setting_changes").toArray();
+    changes.append(QJsonObject{
+        {"time", QDateTime::currentDateTime().toString(Qt::ISODateWithMs)},
+        {"recording_elapsed_s", elapsed},
+        // Index of the next video frame when the change was sent. The camera applies it a little later:
+        // measured +2 frames on a DFK 33UX174 (the frame already being exposed can't change).
+        {"issued_at_video_frame", qint64(recorder_->framesSubmitted())},
+        {"after_device_timestamp_ns", qint64(recorder_->lastTimestampNs())},
+        {"setting", setting},
+        {"value", value}});
+    sidecar_["setting_changes"] = changes;
+    writeSidecar();  // immediately, so the log survives a crash
+}
+
+void MainWindow::runSettingChangeScript()
+{
+    // Uses the real settings dialog and signal path, exactly as a user's key presses would.
+    auto* dialog = new CameraSettingsDialog(camera_->properties(), recorder_ != nullptr, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &CameraSettingsDialog::settingChanged, this, &MainWindow::logSettingChange);
+    dialog->show();
+    ic4::Error err;
+    const double exposureMs = camera_->properties().getValueDouble("ExposureTime", err) / 1000.0;
+    const bool gainWasAuto = camera_->properties().getValueString("GainAuto", err) != "Off";
+    const bool exposureWasAuto = camera_->properties().getValueString("ExposureAuto", err) != "Off";
+    QTimer::singleShot(500, dialog, [dialog] {
+        dialog->setField("GainAuto", false);
+        dialog->setField("ExposureAuto", false);
+    });
+    QTimer::singleShot(2000, dialog, [dialog, exposureMs] { dialog->setField("ExposureTime", exposureMs * 0.5); });
+    QTimer::singleShot(4000, dialog, [dialog, exposureMs] { dialog->setField("ExposureTime", exposureMs); });
+    QTimer::singleShot(4500, dialog, [dialog, gainWasAuto, exposureWasAuto] {
+        dialog->setField("GainAuto", gainWasAuto);
+        dialog->setField("ExposureAuto", exposureWasAuto);
+        dialog->close();
+    });
 }
 
 void MainWindow::writeSidecar()
@@ -402,12 +447,15 @@ double processCpuSeconds()
 
 }  // namespace
 
-void MainWindow::runBenchmark(double seconds, const QString& grabFile, bool record, bool takeSnapshot)
+void MainWindow::runBenchmark(double seconds, const QString& grabFile, bool record, bool takeSnapshot,
+                              bool changeSettings)
 {
     QTimer::singleShot(3000, this, [=, this] {
         if (record) {
             recordAction_->setChecked(true);
             startRecording();
+            if (changeSettings)
+                QTimer::singleShot(1500, this, &MainWindow::runSettingChangeScript);
         }
         const auto t0 = std::chrono::steady_clock::now();
         const double cpu0 = processCpuSeconds();

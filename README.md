@@ -19,7 +19,7 @@ Two versions share the same controls and output format:
 
 - **Live view** at full frame rate, letterboxed to the window.
 - **Recording (Ctrl+R):** H.264 in fragmented MP4, so a crash loses only the last ~2–3 s. Each recording also gets a CSV with the camera's frame number and hardware timestamp for every frame, so dropped frames are detectable.
-- **Metadata sidecar per recording** (`<recording>.json`), for methods sections and reproducibility: start and stop times, frames written and dropped, measured frame rate, encoder settings, the app version, and the camera's settings (model, serial, exposure, gain, white balance, gamma, and more) captured at start and at stop, plus IC4's complete settings dump.
+- **Metadata sidecar per recording** (`<recording>.json`), for methods sections and reproducibility: start and stop times, frames written and dropped, measured frame rate, encoder settings, the app version, and the camera's settings (model, serial, exposure, gain, white balance, gamma, and more) captured at start and at stop, plus IC4's complete settings dump, and a log of every setting changed mid-recording, with the video frame it was issued at.
 - **Quality presets (Ctrl+E):** Very high / High / Standard / Compact (constant quality).
 - **Camera settings (Ctrl+P):** exposure, gain, white balance, frame rate, gamma, black level and image flip. Keyboard-driven, with auto values shown live. Settings persist between sessions.
 - **Snapshot (Ctrl+S):** full-resolution PNG.
