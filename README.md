@@ -27,6 +27,8 @@ Two versions share the same controls and output format:
 
 Recordings are saved to `~/Videos/ScopeRecordings/` by default.
 
+**Summaries:** [`tools/summarize/`](tools/summarize/) cuts a long recording down to a short, chaptered summary with a clickable visual outline, without re-encoding.
+
 ## Hardware
 
 Developed and tested with a **DFK 33UX174** (Sony IMX174, 1920×1200, BayerGB8) on Arch Linux (Wayland/Hyprland) with an **NVIDIA T400**. Other TIS USB3 Vision colour cameras should work with the Python version. The C++ version's GPU debayer currently assumes the GBRG Bayer pattern (see `cpp/src/GpuFrames.cu`).
